@@ -512,7 +512,7 @@
             $.ajax({
                 cache: false,
                 method: 'GET',
-                url: `{{.basePath}}/api/suggest-client-ips?sr=${subnetRange}`,
+                url: '{{.basePath}}/api/suggest-client-ips?sr=' + encodeURIComponent(subnetRange),
                 dataType: 'json',
                 contentType: "application/json",
                 success: function(data) {

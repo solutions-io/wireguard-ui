@@ -56,7 +56,7 @@ Connected Peers
                 <th scope="row">{{ $idx }}</th>
                 <td>{{ $peer.Name }}</td>
                 <td>{{ $peer.Email }}</td>
-                <td>{{ $peer.AllocatedIP }}</td>
+                <td>{{ range $i, $ip := $peer.AllocatedIPs }}{{ if $i }}<br>{{ end }}{{ $ip }}{{ end }}</td>
                 <td>{{ $peer.Endpoint }}</td>
                 <td>{{ $peer.PublicKey }}</td>
                 <td title="{{ $peer.ReceivedBytes }} Bytes"><script>document.write(bytesToHumanReadable({{ $peer.ReceivedBytes }}))</script></td>

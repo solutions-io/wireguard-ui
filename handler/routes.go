@@ -27,6 +27,17 @@ import (
 
 var usernameRegexp = regexp.MustCompile("^\\w[\\w\\-.]*$")
 
+// validateClientText checks the free-text client fields that end up in wg0.conf.
+func validateClientText(client model.Client) string {
+	if util.HasControlChars(client.Name) || util.HasControlChars(client.Email) {
+		return "Name and email cannot contain line breaks or other control characters"
+	}
+	if !util.ValidateEndpoint(client.Endpoint) {
+		return "Endpoint must be in host:port format"
+	}
+	return ""
+}
+
 // Health check handler
 func Health() echo.HandlerFunc {
 	return func(c echo.Context) error {
@@ -409,6 +420,10 @@ func NewClient(db store.IStore) echo.HandlerFunc {
 		var client model.Client
 		c.Bind(&client)
 
+		if msg := validateClientText(client); msg != "" {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, msg})
+		}
+
 		// read server information
 		server, err := db.GetServer()
 		if err != nil {
@@ -496,7 +511,7 @@ func NewClient(db store.IStore) echo.HandlerFunc {
 				false, err.Error(),
 			})
 		}
-		log.Infof("Created wireguard client: %v", client)
+		log.Infof("Created wireguard client %s (%s)", client.Name, client.ID)
 
 		return c.JSON(http.StatusOK, client)
 	}
@@ -516,6 +531,10 @@ func UpdateClient(db store.IStore) echo.HandlerFunc {
 		clientData, err := db.GetClientByID(_client.ID, model.QRCodeSettings{Enabled: false})
 		if err != nil {
 			return c.JSON(http.StatusNotFound, jsonHTTPResponse{false, "Client not found"})
+		}
+
+		if msg := validateClientText(_client); msg != "" {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, msg})
 		}
 
 		server, err := db.GetServer()
@@ -599,7 +618,7 @@ func UpdateClient(db store.IStore) echo.HandlerFunc {
 		if err := db.SaveClient(client); err != nil {
 			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, err.Error()})
 		}
-		log.Infof("Updated client information successfully => %v", client)
+		log.Infof("Updated wireguard client %s (%s)", client.Name, client.ID)
 
 		return c.JSON(http.StatusOK, jsonHTTPResponse{true, "Updated client successfully"})
 	}
@@ -694,7 +713,7 @@ func RemoveClient(db store.IStore) echo.HandlerFunc {
 			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "Cannot delete client from database"})
 		}
 
-		log.Infof("Removed wireguard client: %v", client)
+		log.Infof("Removed wireguard client %s", client.ID)
 		return c.JSON(http.StatusOK, jsonHTTPResponse{true, "Client removed"})
 	}
 }
@@ -758,7 +777,7 @@ func WireGuardServerKeyPair(db store.IStore) echo.HandlerFunc {
 		if err := db.SaveServerKeyPair(serverKeyPair); err != nil {
 			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "Cannot generate Wireguard key pair"})
 		}
-		log.Infof("Updated wireguard server interfaces settings: %v", serverKeyPair)
+		log.Infof("Generated a new wireguard server key pair, public key %s", serverKeyPair.PublicKey)
 
 		return c.JSON(http.StatusOK, serverKeyPair)
 	}
@@ -790,7 +809,7 @@ func Status(db store.IStore) echo.HandlerFunc {
 		LastHandshakeTime time.Time
 		LastHandshakeRel  time.Duration
 		Connected         bool
-		AllocatedIP       string
+		AllocatedIPs      []string
 		Endpoint          string
 	}
 
@@ -838,12 +857,9 @@ func Status(db store.IStore) echo.HandlerFunc {
 			for i := range devices {
 				devVm := DeviceVM{Name: devices[i].Name}
 				for j := range devices[i].Peers {
-					var allocatedIPs string
+					var allocatedIPs []string
 					for _, ip := range devices[i].Peers[j].AllowedIPs {
-						if len(allocatedIPs) > 0 {
-							allocatedIPs += "</br>"
-						}
-						allocatedIPs += ip.String()
+						allocatedIPs = append(allocatedIPs, ip.String())
 					}
 					pVm := PeerVM{
 						PublicKey:         devices[i].Peers[j].PublicKey.String(),
@@ -851,7 +867,7 @@ func Status(db store.IStore) echo.HandlerFunc {
 						TransmitBytes:     devices[i].Peers[j].TransmitBytes,
 						LastHandshakeTime: devices[i].Peers[j].LastHandshakeTime,
 						LastHandshakeRel:  time.Since(devices[i].Peers[j].LastHandshakeTime),
-						AllocatedIP:       allocatedIPs,
+						AllocatedIPs:      allocatedIPs,
 					}
 					pVm.Connected = pVm.LastHandshakeRel.Minutes() < 3.
 

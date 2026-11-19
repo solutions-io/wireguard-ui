@@ -3,6 +3,7 @@ package util
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
 	"encoding/gob"
 	"encoding/json"
 	"errors"
@@ -10,7 +11,7 @@ import (
 	"hash/crc32"
 	"io"
 	"io/fs"
-	"math/rand"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"strings"
 	"text/template"
 	"time"
+	"unicode"
 
 	"github.com/ngoduykhanh/wireguard-ui/store"
 	"golang.org/x/mod/sumdb/dirhash"
@@ -96,6 +98,31 @@ func ClientDefaultsFromEnv() model.ClientDefaults {
 
 	return clientDefaults
 }
+
+// HasControlChars reports whether s contains a control character, such as a line break.
+func HasControlChars(s string) bool {
+	return strings.ContainsFunc(s, unicode.IsControl)
+}
+
+// ValidateEndpoint checks an optional peer endpoint in host:port form.
+func ValidateEndpoint(endpoint string) bool {
+	if endpoint == "" {
+		return true
+	}
+	if HasControlChars(endpoint) || strings.ContainsAny(endpoint, " \t") {
+		return false
+	}
+	host, port, err := net.SplitHostPort(endpoint)
+	if err != nil || host == "" {
+		return false
+	}
+	n, err := strconv.Atoi(port)
+	return err == nil && n > 0 && n < 65536
+}
+
+// configLineReplacer keeps free text on one line in the generated server config, so that it
+// cannot add directives such as PostUp, which wg-quick runs as root.
+var configLineReplacer = strings.NewReplacer("\r", " ", "\n", " ")
 
 // ContainsCIDR to check if ipnet1 contains ipnet2
 // https://stackoverflow.com/a/40406619/6111641
@@ -560,12 +587,17 @@ func WriteWireGuardServerConfig(tmplDir fs.FS, serverConfig model.Server, client
 		tmplWireguardConf = fileContent
 	}
 
-	// escape multiline notes
+	// keep free text inside its comment lines
 	escapedClientDataList := []model.ClientData{}
 	for _, cd := range clientDataList {
-		if cd.Client.AdditionalNotes != "" {
-			cd.Client.AdditionalNotes = strings.ReplaceAll(cd.Client.AdditionalNotes, "\n", "\n# ")
+		client := *cd.Client
+		client.Name = configLineReplacer.Replace(client.Name)
+		client.Email = configLineReplacer.Replace(client.Email)
+		client.Endpoint = configLineReplacer.Replace(client.Endpoint)
+		if client.AdditionalNotes != "" {
+			client.AdditionalNotes = strings.ReplaceAll(strings.ReplaceAll(client.AdditionalNotes, "\r", ""), "\n", "\n# ")
 		}
+		cd.Client = &client
 		escapedClientDataList = append(escapedClientDataList, cd)
 	}
 
@@ -712,12 +744,17 @@ func UpdateHashes(db store.IStore) error {
 	return db.SaveHashes(clientServerHashes)
 }
 
+// RandomString returns a random string from crypto/rand; it is the default session secret.
 func RandomString(length int) string {
-	var seededRand = rand.New(rand.NewSource(time.Now().UnixNano()))
-	charset := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	max := big.NewInt(int64(len(charset)))
 	b := make([]byte, length)
 	for i := range b {
-		b[i] = charset[seededRand.Intn(len(charset))]
+		n, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			panic(err)
+		}
+		b[i] = charset[n.Int64()]
 	}
 	return string(b)
 }
