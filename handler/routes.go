@@ -2,7 +2,6 @@ package handler
 
 import (
 	"crypto/subtle"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -10,7 +9,6 @@ import (
 	"os"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,14 +17,11 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/gommon/log"
 	"github.com/rs/xid"
-	"github.com/skip2/go-qrcode"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
-	"github.com/ngoduykhanh/wireguard-ui/emailer"
 	"github.com/ngoduykhanh/wireguard-ui/model"
 	"github.com/ngoduykhanh/wireguard-ui/store"
-	"github.com/ngoduykhanh/wireguard-ui/telegram"
 	"github.com/ngoduykhanh/wireguard-ui/util"
 )
 
@@ -414,14 +409,6 @@ func NewClient(db store.IStore) echo.HandlerFunc {
 		var client model.Client
 		c.Bind(&client)
 
-		// Validate Telegram userid if provided
-		if client.TgUserid != "" {
-			idNum, err := strconv.ParseInt(client.TgUserid, 10, 64)
-			if err != nil || idNum == 0 {
-				return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Telegram userid must be a non-zero number"})
-			}
-		}
-
 		// read server information
 		server, err := db.GetServer()
 		if err != nil {
@@ -515,111 +502,6 @@ func NewClient(db store.IStore) echo.HandlerFunc {
 	}
 }
 
-// EmailClient handler to send the configuration via email
-func EmailClient(db store.IStore, mailer emailer.Emailer, emailSubject, emailContent string) echo.HandlerFunc {
-	type clientIdEmailPayload struct {
-		ID    string `json:"id"`
-		Email string `json:"email"`
-	}
-
-	return func(c echo.Context) error {
-		var payload clientIdEmailPayload
-		c.Bind(&payload)
-		// TODO validate email
-
-		if _, err := xid.FromString(payload.ID); err != nil {
-			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid client ID"})
-		}
-
-		qrCodeSettings := model.QRCodeSettings{
-			Enabled:    true,
-			IncludeDNS: true,
-			IncludeMTU: true,
-		}
-		clientData, err := db.GetClientByID(payload.ID, qrCodeSettings)
-		if err != nil {
-			log.Errorf("Cannot generate client id %s config file for downloading: %v", payload.ID, err)
-			return c.JSON(http.StatusNotFound, jsonHTTPResponse{false, "Client not found"})
-		}
-
-		// build config
-		server, _ := db.GetServer()
-		globalSettings, _ := db.GetGlobalSettings()
-		config := util.BuildClientConfig(*clientData.Client, server, globalSettings)
-
-		cfgAtt := emailer.Attachment{Name: "wg0.conf", Data: []byte(config)}
-		var attachments []emailer.Attachment
-		if clientData.Client.PrivateKey != "" {
-			qrdata, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(clientData.QRCode, "data:image/png;base64,"))
-			if err != nil {
-				return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "decoding: " + err.Error()})
-			}
-			qrAtt := emailer.Attachment{Name: "wg.png", Data: qrdata}
-			attachments = []emailer.Attachment{cfgAtt, qrAtt}
-		} else {
-			attachments = []emailer.Attachment{cfgAtt}
-		}
-		err = mailer.Send(
-			clientData.Client.Name,
-			payload.Email,
-			emailSubject,
-			emailContent,
-			attachments,
-		)
-
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, err.Error()})
-		}
-
-		return c.JSON(http.StatusOK, jsonHTTPResponse{true, "Email sent successfully"})
-	}
-}
-
-// SendTelegramClient handler to send the configuration via Telegram
-func SendTelegramClient(db store.IStore) echo.HandlerFunc {
-	type clientIdUseridPayload struct {
-		ID     string `json:"id"`
-		Userid string `json:"userid"`
-	}
-	return func(c echo.Context) error {
-		var payload clientIdUseridPayload
-		c.Bind(&payload)
-
-		clientData, err := db.GetClientByID(payload.ID, model.QRCodeSettings{Enabled: false})
-		if err != nil {
-			log.Errorf("Cannot generate client id %s config file for downloading: %v", payload.ID, err)
-			return c.JSON(http.StatusNotFound, jsonHTTPResponse{false, "Client not found"})
-		}
-
-		// build config
-		server, _ := db.GetServer()
-		globalSettings, _ := db.GetGlobalSettings()
-		config := util.BuildClientConfig(*clientData.Client, server, globalSettings)
-		configData := []byte(config)
-		var qrData []byte
-
-		if clientData.Client.PrivateKey != "" {
-			qrData, err = qrcode.Encode(config, qrcode.Medium, 512)
-			if err != nil {
-				return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "qr gen: " + err.Error()})
-			}
-		}
-
-		userid, err := strconv.ParseInt(clientData.Client.TgUserid, 10, 64)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "userid: " + err.Error()})
-		}
-
-		err = telegram.SendConfig(userid, clientData.Client.Name, configData, qrData, false)
-
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, err.Error()})
-		}
-
-		return c.JSON(http.StatusOK, jsonHTTPResponse{true, "Telegram message sent successfully"})
-	}
-}
-
 // UpdateClient handler to update client information
 func UpdateClient(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
@@ -634,14 +516,6 @@ func UpdateClient(db store.IStore) echo.HandlerFunc {
 		clientData, err := db.GetClientByID(_client.ID, model.QRCodeSettings{Enabled: false})
 		if err != nil {
 			return c.JSON(http.StatusNotFound, jsonHTTPResponse{false, "Client not found"})
-		}
-
-		// Validate Telegram userid if provided
-		if _client.TgUserid != "" {
-			idNum, err := strconv.ParseInt(_client.TgUserid, 10, 64)
-			if err != nil || idNum == 0 {
-				return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Telegram userid must be a non-zero number"})
-			}
 		}
 
 		server, err := db.GetServer()
@@ -710,7 +584,6 @@ func UpdateClient(db store.IStore) echo.HandlerFunc {
 		// map new data
 		client.Name = _client.Name
 		client.Email = _client.Email
-		client.TgUserid = _client.TgUserid
 		client.Enabled = _client.Enabled
 		client.UseServerDNS = _client.UseServerDNS
 		client.AllocatedIPs = _client.AllocatedIPs

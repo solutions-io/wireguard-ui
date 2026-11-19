@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strconv"
 	"time"
 
 	"github.com/sdomino/scribble"
@@ -39,7 +38,6 @@ func (o *JsonDB) Init() error {
 	var clientPath = path.Join(o.dbPath, "clients")
 	var serverPath = path.Join(o.dbPath, "server")
 	var userPath = path.Join(o.dbPath, "users")
-	var wakeOnLanHostsPath = path.Join(o.dbPath, "wake_on_lan_hosts")
 	var serverInterfacePath = path.Join(serverPath, "interfaces.json")
 	var serverKeyPairPath = path.Join(serverPath, "keypair.json")
 	var globalSettingPath = path.Join(serverPath, "global_settings.json")
@@ -54,9 +52,6 @@ func (o *JsonDB) Init() error {
 	}
 	if _, err := os.Stat(userPath); os.IsNotExist(err) {
 		os.MkdirAll(userPath, os.ModePerm)
-	}
-	if _, err := os.Stat(wakeOnLanHostsPath); os.IsNotExist(err) {
-		os.MkdirAll(wakeOnLanHostsPath, os.ModePerm)
 	}
 
 	// server's interface
@@ -167,19 +162,6 @@ func (o *JsonDB) Init() error {
 
 		if err := json.Unmarshal([]byte(i), &user); err == nil {
 			util.DBUsersToCRC32[user.Username] = util.GetDBUserCRC32(user)
-		}
-	}
-
-	clients, err := o.GetClients(false)
-	if err != nil {
-		return nil
-	}
-	for _, cl := range clients {
-		client := cl.Client
-		if client.Enabled && len(client.TgUserid) > 0 {
-			if userid, err := strconv.ParseInt(client.TgUserid, 10, 64); err == nil {
-				util.UpdateTgToClientID(userid, client.ID)
-			}
 		}
 	}
 
@@ -337,17 +319,6 @@ func (o *JsonDB) GetClientByID(clientID string, qrCodeSettings model.QRCodeSetti
 func (o *JsonDB) SaveClient(client model.Client) error {
 	clientPath := path.Join(path.Join(o.dbPath, "clients"), client.ID+".json")
 	output := o.conn.Write("clients", client.ID, client)
-	if output == nil {
-		if client.Enabled && len(client.TgUserid) > 0 {
-			if userid, err := strconv.ParseInt(client.TgUserid, 10, 64); err == nil {
-				util.UpdateTgToClientID(userid, client.ID)
-			}
-		} else {
-			util.RemoveTgToClientID(client.ID)
-		}
-	} else {
-		util.RemoveTgToClientID(client.ID)
-	}
 	err := util.ManagePerms(clientPath)
 	if err != nil {
 		return err
@@ -356,7 +327,6 @@ func (o *JsonDB) SaveClient(client model.Client) error {
 }
 
 func (o *JsonDB) DeleteClient(clientID string) error {
-	util.RemoveTgToClientID(clientID)
 	return o.conn.Delete("clients", clientID)
 }
 
