@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"math/rand"
 	"net"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -23,7 +24,6 @@ import (
 	"github.com/ngoduykhanh/wireguard-ui/store"
 	"golang.org/x/mod/sumdb/dirhash"
 
-	externalip "github.com/glendc/go-external-ip"
 	"github.com/labstack/gommon/log"
 	"github.com/ngoduykhanh/wireguard-ui/model"
 	"github.com/sdomino/scribble"
@@ -216,30 +216,38 @@ func GetInterfaceIPs() ([]model.Interface, error) {
 	return interfaceList, err
 }
 
-// GetPublicIP to get machine's public ip address
+var publicIPSources = []string{
+	"https://checkip.amazonaws.com/",
+	"https://ifconfig.top",
+}
+
+// GetPublicIP returns the machine's public IP address, or "N/A" when no source answers.
 func GetPublicIP() (model.Interface, error) {
-	// set time out to 5 seconds
-	cfg := externalip.ConsensusConfig{}
-	cfg.Timeout = time.Second * 5
-	consensus := externalip.NewConsensus(&cfg, nil)
-
-	// add trusted voters
-	consensus.AddVoter(externalip.NewHTTPSource("https://checkip.amazonaws.com/"), 1)
-	consensus.AddVoter(externalip.NewHTTPSource("http://whatismyip.akamai.com"), 1)
-	consensus.AddVoter(externalip.NewHTTPSource("https://ifconfig.top"), 1)
-
-	publicInterface := model.Interface{}
-	publicInterface.Name = "Public Address"
-
-	ip, err := consensus.ExternalIP()
-	if err != nil {
-		publicInterface.IPAddress = "N/A"
-	} else {
-		publicInterface.IPAddress = ip.String()
+	publicInterface := model.Interface{Name: "Public Address", IPAddress: "N/A"}
+	client := &http.Client{Timeout: 5 * time.Second}
+	for _, source := range publicIPSources {
+		if ip := fetchPublicIP(client, source); ip != nil {
+			publicInterface.IPAddress = ip.String()
+			break
+		}
 	}
-
-	// error handling happened above, no need to pass it through
 	return publicInterface, nil
+}
+
+func fetchPublicIP(client *http.Client, source string) net.IP {
+	resp, err := client.Get(source)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64))
+	if err != nil {
+		return nil
+	}
+	return net.ParseIP(strings.TrimSpace(string(body)))
 }
 
 // GetIPFromCIDR get ip from CIDR

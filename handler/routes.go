@@ -914,7 +914,6 @@ func MachineIPAddresses() echo.HandlerFunc {
 		}
 
 		// get public ip address
-		// TODO: Remove the go-external-ip dependency
 		publicInterface, err := util.GetPublicIP()
 		if err != nil {
 			log.Warn("Cannot get machine public ip address: ", err)
