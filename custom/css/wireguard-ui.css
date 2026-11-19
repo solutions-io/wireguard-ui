@@ -1,0 +1,19 @@
+/* Overrides for AdminLTE 3.2 that keep the layout of AdminLTE 3.0, which this UI was designed for. */
+
+/* 3.2 turned .info-box-content into a column flexbox, which stretches the buttons and badges on the
+   client and user cards to the full width of the card. */
+.info-box .info-box-content {
+    display: block;
+    line-height: inherit;
+    overflow: visible;
+    padding: 5px 10px;
+}
+
+/* 3.2 dropped the extra space above the sidebar section headers. */
+.nav-sidebar .nav-header {
+    padding: .5rem;
+}
+
+.nav-sidebar .nav-header:not(:first-of-type) {
+    padding: 1.7rem 1rem .5rem;
+}
