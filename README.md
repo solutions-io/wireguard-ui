@@ -46,7 +46,7 @@ To turn the firewall off, clear **Enable the firewall**, save, and click Apply C
 
 ## Build
 
-Requirements: Go 1.27 or newer, Node.js with npm, and bash.
+Requirements: Node.js with npm, bash, and either Go 1.27 or newer or Docker. Without a local Go installation, `build.sh` runs the Go build in the `golang:1.27` container.
 
 ```sh
 ./build.sh                  # dist/wireguard-ui-linux-arm64 for the VPN server
