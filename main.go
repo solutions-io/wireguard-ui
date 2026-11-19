@@ -119,6 +119,9 @@ func main() {
 	// create the wireguard config on start, if it doesn't exist
 	initServerConfig(db, tmplDir)
 
+	// load the last applied firewall rules when they are missing, now and every 30 seconds
+	go util.KeepFirewallLoaded(db, 30*time.Second)
+
 	// Check if subnet ranges are valid for the server configuration
 	// Remove any non-valid CIDRs
 	if err := util.ValidateAndFixSubnetRanges(db); err != nil {
@@ -166,6 +169,8 @@ func main() {
 	app.POST(util.BasePath+"/wg-server/keypair", handler.WireGuardServerKeyPair(db), handler.ValidSession, handler.ContentTypeJson, handler.NeedsAdmin)
 	app.GET(util.BasePath+"/global-settings", handler.GlobalSettings(db), handler.ValidSession, handler.RefreshSession, handler.NeedsAdmin)
 	app.POST(util.BasePath+"/global-settings", handler.GlobalSettingSubmit(db), handler.ValidSession, handler.ContentTypeJson, handler.NeedsAdmin)
+	app.GET(util.BasePath+"/firewall", handler.Firewall(db), handler.ValidSession, handler.RefreshSession, handler.NeedsAdmin)
+	app.POST(util.BasePath+"/firewall", handler.FirewallSubmit(db), handler.ValidSession, handler.ContentTypeJson, handler.NeedsAdmin)
 	app.GET(util.BasePath+"/status", handler.Status(db), handler.ValidSession, handler.RefreshSession)
 	app.GET(util.BasePath+"/api/clients", handler.GetClients(db), handler.ValidSession)
 	app.GET(util.BasePath+"/api/client/:id", handler.GetClient(db), handler.ValidSession)

@@ -42,6 +42,7 @@ func (o *JsonDB) Init() error {
 	var serverKeyPairPath = path.Join(serverPath, "keypair.json")
 	var globalSettingPath = path.Join(serverPath, "global_settings.json")
 	var hashesPath = path.Join(serverPath, "hashes.json")
+	var firewallPath = path.Join(serverPath, "firewall.json")
 
 	// create directories if they do not exist
 	if _, err := os.Stat(clientPath); os.IsNotExist(err) {
@@ -109,6 +110,15 @@ func (o *JsonDB) Init() error {
 		globalSetting.UpdatedAt = time.Now().UTC()
 		o.conn.Write("server", "global_settings", globalSetting)
 		err := util.ManagePerms(globalSettingPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	// firewall for the traffic of VPN clients, off until it is configured
+	if _, err := os.Stat(firewallPath); os.IsNotExist(err) {
+		o.conn.Write("server", "firewall", util.DefaultFirewallSettings())
+		err := util.ManagePerms(firewallPath)
 		if err != nil {
 			return err
 		}
@@ -354,6 +364,21 @@ func (o *JsonDB) SaveGlobalSettings(globalSettings model.GlobalSetting) error {
 	globalSettingsPath := path.Join(path.Join(o.dbPath, "server"), "global_settings.json")
 	output := o.conn.Write("server", "global_settings", globalSettings)
 	err := util.ManagePerms(globalSettingsPath)
+	if err != nil {
+		return err
+	}
+	return output
+}
+
+func (o *JsonDB) GetFirewallSettings() (model.FirewallSettings, error) {
+	firewall := model.FirewallSettings{}
+	return firewall, o.conn.Read("server", "firewall", &firewall)
+}
+
+func (o *JsonDB) SaveFirewallSettings(firewall model.FirewallSettings) error {
+	firewallPath := path.Join(path.Join(o.dbPath, "server"), "firewall.json")
+	output := o.conn.Write("server", "firewall", firewall)
+	err := util.ManagePerms(firewallPath)
 	if err != nil {
 		return err
 	}

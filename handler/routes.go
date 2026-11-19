@@ -920,6 +920,47 @@ func GlobalSettingSubmit(db store.IStore) echo.HandlerFunc {
 	}
 }
 
+// Firewall handler shows the firewall for the traffic of VPN clients
+func Firewall(db store.IStore) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		firewall, err := db.GetFirewallSettings()
+		if err != nil {
+			log.Error("Cannot get firewall settings: ", err)
+		}
+
+		return c.Render(http.StatusOK, "firewall.html", map[string]interface{}{
+			"baseData": model.BaseData{Active: "firewall", CurrentUser: currentUser(c), Admin: isAdmin(c)},
+			"firewall": firewall,
+			"status":   util.GetFirewallStatus(),
+		})
+	}
+}
+
+// FirewallSubmit handler saves the firewall settings; they take effect on "Apply Config"
+func FirewallSubmit(db store.IStore) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		var input model.FirewallSettings
+		if err := c.Bind(&input); err != nil {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Invalid firewall settings"})
+		}
+
+		firewall, err := util.NormalizeFirewallSettings(input)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, err.Error()})
+		}
+		firewall.UpdatedAt = time.Now().UTC()
+
+		if err := db.SaveFirewallSettings(firewall); err != nil {
+			log.Error("Cannot save firewall settings: ", err)
+			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "Cannot save firewall settings"})
+		}
+		log.Infof("Updated firewall settings: enabled=%v, %d destinations, TCP %v, UDP %v",
+			firewall.Enabled, len(firewall.Destinations), firewall.TCPPorts, firewall.UDPPorts)
+
+		return c.JSON(http.StatusOK, jsonHTTPResponse{true, "Saved firewall settings. Click Apply Config to activate them."})
+	}
+}
+
 // MachineIPAddresses handler to get local interface ip addresses
 func MachineIPAddresses() echo.HandlerFunc {
 	return func(c echo.Context) error {
@@ -1042,12 +1083,26 @@ func ApplyServerConfig(db store.IStore, tmplDir fs.FS) echo.HandlerFunc {
 			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "Cannot get global settings"})
 		}
 
+		firewall, err := db.GetFirewallSettings()
+		if err != nil {
+			log.Error("Cannot get firewall settings: ", err)
+			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "Cannot get firewall settings"})
+		}
+
 		// Write config file
 		err = util.WriteWireGuardServerConfig(tmplDir, server, clients, users, settings)
 		if err != nil {
 			log.Error("Cannot apply server config: ", err)
 			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{
 				false, fmt.Sprintf("Cannot apply server config: %v", err),
+			})
+		}
+
+		// Load the firewall for VPN clients; on failure the previous rules stay active
+		if err := util.ApplyFirewall(firewall, settings.ConfigFilePath); err != nil {
+			log.Error("Cannot apply firewall: ", err)
+			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{
+				false, fmt.Sprintf("The WireGuard config was applied, but the firewall was not: %v", err),
 			})
 		}
 

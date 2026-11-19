@@ -711,7 +711,7 @@ func ParseLogLevel(lvl string) (log.Lvl, error) {
 // GetCurrentHash returns current hashes
 func GetCurrentHash(db store.IStore) (string, string) {
 	hashClients, _ := dirhash.HashDir(path.Join(db.GetPath(), "clients"), "prefix", dirhash.Hash1)
-	files := append([]string(nil), "prefix/global_settings.json", "prefix/interfaces.json", "prefix/keypair.json")
+	files := append([]string(nil), "prefix/global_settings.json", "prefix/interfaces.json", "prefix/keypair.json", "prefix/firewall.json")
 
 	osOpen := func(name string) (io.ReadCloser, error) {
 		return os.Open(filepath.Join(path.Join(db.GetPath(), "server"), strings.TrimPrefix(name, "prefix")))

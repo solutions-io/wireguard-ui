@@ -1,0 +1,252 @@
+{{define "title"}}
+Firewall
+{{end}}
+
+{{define "top_css"}}
+{{end}}
+
+{{define "username"}}
+{{ .username }}
+{{end}}
+
+{{define "page_title"}}
+Firewall
+{{end}}
+
+{{define "page_content"}}
+<section class="content">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-7">
+                <div class="card card-success">
+                    <div class="card-header">
+                        <h3 class="card-title">Traffic of VPN clients</h3>
+                    </div>
+                    <form role="form" id="frm_firewall" name="frm_firewall">
+                        <div class="card-body">
+                            <div class="form-group">
+                                <div class="icheck-primary d-inline">
+                                    <input type="checkbox" id="firewall_enabled" {{ if .firewall.Enabled }}checked{{ end }}>
+                                    <label for="firewall_enabled">Enable the firewall</label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Allowed destinations <small class="text-muted">(every port)</small></label>
+                                <table class="table table-sm" id="destinations">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 40%">Address or network</th>
+                                            <th>Description</th>
+                                            <th style="width: 1%"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    {{ range .firewall.Destinations }}
+                                        <tr>
+                                            <td><input type="text" class="form-control form-control-sm dest-address" value="{{ .Address }}"></td>
+                                            <td><input type="text" class="form-control form-control-sm dest-description" value="{{ .Description }}"></td>
+                                            <td><button type="button" class="btn btn-outline-danger btn-sm dest-remove" title="Remove"><i class="fas fa-trash"></i></button></td>
+                                        </tr>
+                                    {{ end }}
+                                    </tbody>
+                                </table>
+                                <button type="button" class="btn btn-outline-success btn-sm" id="dest_add"><i class="fas fa-plus"></i> Add destination</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" data-toggle="modal" data-target="#modal_bulk_add"><i class="fas fa-list"></i> Add several</button>
+                            </div>
+                            <div class="form-group">
+                                <label for="tcp_ports" class="control-label">Allowed TCP ports to all other addresses</label>
+                                <input type="text" data-role="tagsinput" class="form-control" id="tcp_ports" value="">
+                            </div>
+                            <div class="form-group">
+                                <label for="udp_ports" class="control-label">Allowed UDP ports to all other addresses</label>
+                                <input type="text" data-role="tagsinput" class="form-control" id="udp_ports" value="">
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <button type="submit" class="btn btn-success">Save</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="col-md-5">
+                <div class="card card-success">
+                    <div class="card-header">
+                        <h3 class="card-title">Status on this server</h3>
+                    </div>
+                    <div class="card-body">
+                        {{ if .status.Error }}
+                        <p class="text-danger">{{ .status.Error }}</p>
+                        {{ else if .status.Loaded }}
+                        <p><span class="badge badge-success">Active</span> The rules are loaded in nftables.</p>
+                        <p>Blocked packets since the rules were last loaded: <strong id="blocked_packets">{{ .status.BlockedPackets }}</strong></p>
+                        {{ else }}
+                        <p><span class="badge badge-secondary">Not active</span> No rules are loaded, so VPN clients can reach everything.</p>
+                        {{ end }}
+                        <p class="text-muted mb-0">Saved changes take effect when you click <strong>Apply Config</strong>.</p>
+                    </div>
+                </div>
+                <div class="card card-success">
+                    <div class="card-header">
+                        <h3 class="card-title">Help</h3>
+                    </div>
+                    <div class="card-body">
+                        <dl>
+                            <dt>What it does</dt>
+                            <dd>The server only forwards traffic from VPN clients that these rules allow, and rejects
+                                the rest. Clients keep their configuration: nobody has to import anything.</dd>
+                            <dt>Allowed destinations</dt>
+                            <dd>Addresses or networks that clients may reach on every port, such as our own servers.
+                                For example <code>49.13.17.136</code> or <code>10.0.0.0/8</code>.</dd>
+                            <dt>Allowed ports</dt>
+                            <dd>Ports that clients may use towards every other address, for example <code>443</code>
+                                for websites or a range such as <code>8000-8100</code>. Keep <code>53</code> when
+                                clients use the DNS servers from the global settings.</dd>
+                            <dt>Always allowed</dt>
+                            <dd>Replies to allowed connections, and ping.</dd>
+                            <dt>On the server</dt>
+                            <dd>The rules are in the nftables table <code>inet wireguard_ui</code> and in the file
+                                <code>wireguard-ui-firewall.nft</code> next to the WireGuard config. If the table
+                                disappears, for example after reloading nftables, Wireguard UI loads it again within
+                                30 seconds.</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="modal fade" id="modal_bulk_add">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title">Add several destinations</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>One destination per line: the address or network, optionally followed by a description.</p>
+                <textarea class="form-control" id="bulk_destinations" rows="10"
+                    placeholder="49.13.17.136 winprod.panteia.nl&#10;65.108.167.93 prod.solutions.io"></textarea>
+            </div>
+            <div class="modal-footer justify-content-between">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="bulk_add_confirm">Add to the list</button>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "bottom_js"}}
+    <script>
+        function destinationRow(address, description) {
+            const row = $("<tr></tr>");
+            row.append($("<td></td>").append(
+                $('<input type="text" class="form-control form-control-sm dest-address">').val(address)));
+            row.append($("<td></td>").append(
+                $('<input type="text" class="form-control form-control-sm dest-description">').val(description)));
+            row.append($("<td></td>").append(
+                $('<button type="button" class="btn btn-outline-danger btn-sm dest-remove" title="Remove"><i class="fas fa-trash"></i></button>')));
+            return row;
+        }
+
+        function tagValues(id) {
+            const value = $(id).val();
+            return value === "" ? [] : value.split(",");
+        }
+
+        function submitFirewall() {
+            const destinations = [];
+            $("#destinations tbody tr").each(function () {
+                const address = $(this).find(".dest-address").val().trim();
+                if (address !== "") {
+                    destinations.push({"address": address, "description": $(this).find(".dest-description").val()});
+                }
+            });
+            const data = {
+                "enabled": $("#firewall_enabled").is(":checked"),
+                "destinations": destinations,
+                "tcp_ports": tagValues("#tcp_ports"),
+                "udp_ports": tagValues("#udp_ports")
+            };
+
+            $.ajax({
+                cache: false,
+                method: 'POST',
+                url: '{{.basePath}}/firewall',
+                dataType: 'json',
+                contentType: "application/json",
+                data: JSON.stringify(data),
+                success: function (resp) {
+                    toastr.success(resp['message']);
+                    updateApplyConfigVisibility();
+                },
+                error: function (jqXHR) {
+                    const responseJson = jQuery.parseJSON(jqXHR.responseText);
+                    toastr.error(responseJson['message']);
+                }
+            });
+        }
+    </script>
+    <script>
+        const portTagOptions = {
+            'width': '100%',
+            'height': '75%',
+            'interactive': true,
+            'defaultText': 'Add port',
+            'removeWithBackspace': true,
+            'minChars': 0,
+            'minInputWidth': '100%',
+            'placeholderColor': '#666666'
+        };
+        $("#tcp_ports").tagsInput(portTagOptions);
+        $("#udp_ports").tagsInput(portTagOptions);
+
+        {{range .firewall.TCPPorts}}
+        $("#tcp_ports").addTag('{{.}}');
+        {{end}}
+        {{range .firewall.UDPPorts}}
+        $("#udp_ports").addTag('{{.}}');
+        {{end}}
+
+        $(document).ready(function () {
+            $("#dest_add").click(function () {
+                $("#destinations tbody").append(destinationRow("", ""));
+                $("#destinations tbody tr:last .dest-address").focus();
+            });
+
+            $("#destinations").on("click", ".dest-remove", function () {
+                $(this).closest("tr").remove();
+            });
+
+            $("#bulk_add_confirm").click(function () {
+                const lines = $("#bulk_destinations").val().split(/\r?\n/);
+                lines.forEach(function (line) {
+                    const trimmed = line.trim();
+                    if (trimmed === "") {
+                        return;
+                    }
+                    const parts = trimmed.split(/\s+/);
+                    const address = parts.shift();
+                    $("#destinations tbody").append(destinationRow(address, parts.join(" ")));
+                });
+                $("#bulk_destinations").val("");
+                $("#modal_bulk_add").modal('hide');
+            });
+
+            $("#frm_firewall").submit(function (event) {
+                event.preventDefault();
+                submitFirewall();
+            });
+
+            // The status card shows what nftables has loaded, so refresh it after Apply Config.
+            $(document).ajaxSuccess(function (event, xhr, settings) {
+                if (settings.url.endsWith("/api/apply-wg-config")) {
+                    setTimeout(function () { location.reload(); }, 800);
+                }
+            });
+        });
+    </script>
+{{end}}

@@ -19,6 +19,8 @@ type IStore interface {
 	SaveServerInterface(serverInterface model.ServerInterface) error
 	SaveServerKeyPair(serverKeyPair model.ServerKeypair) error
 	SaveGlobalSettings(globalSettings model.GlobalSetting) error
+	GetFirewallSettings() (model.FirewallSettings, error)
+	SaveFirewallSettings(firewall model.FirewallSettings) error
 	GetPath() string
 	SaveHashes(hashes model.ClientServerHashes) error
 	GetHashes() (model.ClientServerHashes, error)
