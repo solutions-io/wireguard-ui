@@ -28,7 +28,7 @@ var (
 	appVersion = "development"
 	gitCommit  = "N/A"
 	gitRef     = "N/A"
-	buildTime  = time.Now().UTC().Format("01-02-2006 15:04:05")
+	buildTime  = "N/A" // set by build.sh; -X only overrides constant initial values
 	// configuration variables
 	flagDisableLogin       = false
 	flagBindAddress        = "0.0.0.0:5000"
