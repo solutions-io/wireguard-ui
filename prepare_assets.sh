@@ -4,9 +4,7 @@ set -e
 DIR=$(dirname "$0")
 
 # install node modules
-YARN=yarn
-[ -x /usr/bin/lsb_release ] && [ -n "`lsb_release -i | grep Debian`" ] && YARN=yarnpkg
-$YARN install --pure-lockfile --production
+npm ci --omit=dev --no-audit --no-fund --prefix "${DIR}"
 
 # Copy admin-lte dist
 mkdir -p "${DIR}/assets/dist/js" "${DIR}/assets/dist/css" && \
