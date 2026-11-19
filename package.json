@@ -2,12 +2,17 @@
   "name": "wireguard-ui",
   "version": "1.0.0",
   "description": "Wireguard web interface",
-  "main": "index.js",
-  "repository": "git@github.com:ngoduykhanh/wireguard-ui.git",
-  "author": "Khanh Ngo <k@ndk.name>",
+  "private": true,
   "license": "MIT",
   "dependencies": {
-    "admin-lte": "^3.0",
-    "jquery-tags-input": "^1.3.5"
+    "@fortawesome/fontawesome-free": "^5.15.4",
+    "admin-lte": "^3.2.0",
+    "bootstrap": "^4.6.2",
+    "icheck-bootstrap": "^3.0.1",
+    "jquery": "^3.7.1",
+    "jquery-tags-input": "^1.3.5",
+    "jquery-validation": "^1.22.1",
+    "select2": "^4.1.0",
+    "toastr": "^2.1.4"
   }
 }
